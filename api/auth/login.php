@@ -5,6 +5,7 @@ header('Content-Type: application/json; charset=utf-8');
 
 require_once __DIR__ . '/../_core/cors.php';
 require_once __DIR__ . '/../_core/jwt.php';
+require_once __DIR__ . '/../_core/password.php';
 require __DIR__ . '/../../config/db.php';
 
 // ================================
@@ -84,11 +85,24 @@ try {
     }
 
     // ================================
-    // VALIDA SENHA (texto puro)
+    // VALIDA SENHA (bcrypt com compatibilidade)
     // ================================
-    if (!hash_equals((string)$user['senha'], $senha)) {
+    $senhaHash = (string)$user['senha'];
+    
+    // Usa função helper que suporta bcrypt e senhas antigas em texto puro
+    if (!password_verify_safe($senha, $senhaHash)) {
         respond(false, 'Credenciais inválidas', [], [], 401);
     }
+    
+    // Opcional: Migração automática de senhas antigas para bcrypt
+    // Descomente as linhas abaixo para migrar automaticamente quando o usuário fizer login:
+    /*
+    if (!is_bcrypt_hash($senhaHash)) {
+        $newHash = password_hash_bcrypt($senha);
+        $updateStmt = $pdo->prepare("UPDATE usuarios SET senha = :senha WHERE id = :id");
+        $updateStmt->execute([':senha' => $newHash, ':id' => $user['id']]);
+    }
+    */
 
     // ================================
     // GERA TOKEN
