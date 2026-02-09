@@ -1,0 +1,43 @@
+name: Deploy PHP Backend via FTP (mirror)
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy-backend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install lftp
+        run: sudo apt-get update && sudo apt-get install -y lftp
+
+      - name: Mirror API (sync + delete)
+        env:
+          FTP_HOST: ${{ secrets.HOST }}
+          FTP_USER: ${{ secrets.USER }}
+          FTP_PASS: ${{ secrets.PASS }}
+        run: |
+          lftp -c "
+            set ssl:verify-certificate no;
+            set ftp:passive-mode true;
+            open -u $FTP_USER,$FTP_PASS $FTP_HOST;
+            mirror -R --only-newer --delete --verbose ./api /public_html/api;
+            bye
+          "
+
+      - name: Mirror Config (sync + delete)
+        env:
+          FTP_HOST: ${{ secrets.HOST }}
+          FTP_USER: ${{ secrets.USER }}
+          FTP_PASS: ${{ secrets.PASS }}
+        run: |
+          lftp -c "
+            set ssl:verify-certificate no;
+            set ftp:passive-mode true;
+            open -u $FTP_USER,$FTP_PASS $FTP_HOST;
+            mirror -R --only-newer --delete --verbose ./config /public_html/config;
+            bye
+          "
