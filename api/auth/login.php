@@ -55,6 +55,13 @@ $usuario = trim((string)($data['usuario'] ?? '')); // CPF
 $senha   = trim((string)($data['senha'] ?? ''));
 
 // ================================
+// DEBUG (remover em produção)
+// ================================
+error_log("LOGIN DEBUG - Usuario recebido: " . $usuario);
+error_log("LOGIN DEBUG - Senha recebida (length): " . strlen($senha));
+error_log("LOGIN DEBUG - Data recebida: " . json_encode($data));
+
+// ================================
 // VALIDAÇÃO
 // ================================
 if ($usuario === '' || $senha === '') {
@@ -71,16 +78,36 @@ try {
     // ================================
     // BUSCA USUÁRIO
     // ================================
+    // Remove formatação do CPF para busca (garante que funciona mesmo se tiver pontos/traços)
+    $cpfLimpo = preg_replace('/\D/', '', $usuario);
+    
+    // Tenta buscar primeiro com o CPF exatamente como foi enviado, depois com CPF limpo
     $stmt = $pdo->prepare("
         SELECT id, cpf, senha, nome
         FROM usuarios
         WHERE cpf = :cpf
         LIMIT 1
     ");
-    $stmt->execute([':cpf' => $usuario]);
+    $stmt->execute([':cpf' => $cpfLimpo]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    // Se não encontrou, tenta com o CPF original (caso tenha formatação no banco)
+    if (!$user && $cpfLimpo !== $usuario) {
+        $stmt->execute([':cpf' => $usuario]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    // ================================
+    // DEBUG (remover em produção)
+    // ================================
+    error_log("LOGIN DEBUG - Usuario buscado no banco: " . ($user ? $user['cpf'] : 'NÃO ENCONTRADO'));
+    if ($user) {
+        error_log("LOGIN DEBUG - Hash no banco (primeiros 20 chars): " . substr($user['senha'], 0, 20) . '...');
+        error_log("LOGIN DEBUG - Hash é bcrypt: " . (is_bcrypt_hash($user['senha']) ? 'SIM' : 'NÃO'));
+    }
 
     if (!$user) {
+        error_log("LOGIN DEBUG - Usuário não encontrado no banco");
         respond(false, 'Credenciais inválidas', [], [], 401);
     }
 
@@ -89,10 +116,21 @@ try {
     // ================================
     $senhaHash = (string)$user['senha'];
     
+    // DEBUG
+    error_log("LOGIN DEBUG - Verificando senha...");
+    error_log("LOGIN DEBUG - Senha digitada: " . $senha);
+    error_log("LOGIN DEBUG - Hash do banco: " . $senhaHash);
+    
     // Usa função helper que suporta bcrypt e senhas antigas em texto puro
-    if (!password_verify_safe($senha, $senhaHash)) {
+    $senhaValida = password_verify_safe($senha, $senhaHash);
+    error_log("LOGIN DEBUG - Senha válida: " . ($senhaValida ? 'SIM' : 'NÃO'));
+    
+    if (!$senhaValida) {
+        error_log("LOGIN DEBUG - Senha inválida!");
         respond(false, 'Credenciais inválidas', [], [], 401);
     }
+    
+    error_log("LOGIN DEBUG - Senha válida! Gerando token...");
     
     // Opcional: Migração automática de senhas antigas para bcrypt
     // Descomente as linhas abaixo para migrar automaticamente quando o usuário fizer login:
